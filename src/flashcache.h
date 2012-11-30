@@ -291,6 +291,7 @@ struct cache_c {
 	int sysctl_error_inject;
 	int sysctl_fast_remove;
 	int sysctl_cache_all;
+	int sysctl_cache_readmiss;
 	int sysctl_fallow_clean_speed;
 	int sysctl_fallow_delay;
 	int sysctl_skip_seq_thresh_kb;

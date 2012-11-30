@@ -208,6 +208,8 @@ flashcache_io_callback(unsigned long error, void *context)
 		VERIFY(cacheblk->cache_state & DISKREADINPROG);
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		if (likely(error == 0)) {
+			if (dmc->sysctl_cache_readmiss == 0)
+				break;
 			/* Kick off the write to the cache */
 			job->action = READFILL;
 			push_io(job);
