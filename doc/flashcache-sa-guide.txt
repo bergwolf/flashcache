@@ -237,6 +237,7 @@ cache device /dev/sdb, disk device /dev/cciss/c0d2
 dev.flashcache.sdb+c0d2.fallow_delay = 900
 dev.flashcache.sdb+c0d2.fallow_clean_speed = 2
 dev.flashcache.sdb+c0d2.cache_all = 1
+dev.flashcache.sdb+c0d2.cache_readmiss = 1
 dev.flashcache.sdb+c0d2.fast_remove = 0
 dev.flashcache.sdb+c0d2.zero_stats = 0
 dev.flashcache.sdb+c0d2.reclaim_policy = 0
@@ -284,6 +285,13 @@ dev.flashcache.<cachedev>.skip_seq_thresh_kb:
 
 Sysctls for writeback mode only :
 
+dev.flashcache.<cachedev>.cache_readmiss:
+	Caching mode to cache missed reads or not. If set to 0, missed reads
+	that are fetched from hard disk, will not be saved on SSD.
+	This can be useful when application uses its own caching where reads
+	are mostly satisfied by application cache. The missed reads are seldom
+	re-read again so entire SSD can be used as writeback cache.
+	Defaults to 1.
 dev.flashcache.<cachedev>.fallow_delay = 900
 	In seconds. Clean dirty blocks that have been "idle" (not 
 	read or written) for fallow_delay seconds. Default is 15

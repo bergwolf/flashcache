@@ -1113,6 +1113,7 @@ init:
 	dmc->sysctl_error_inject = 0;
 	dmc->sysctl_fast_remove = 0;
 	dmc->sysctl_cache_all = 1;
+	dmc->sysctl_cache_readmiss = 1;
 	dmc->sysctl_fallow_clean_speed = FALLOW_CLEAN_SPEED;
 	dmc->sysctl_fallow_delay = FALLOW_DELAY;
 	dmc->sysctl_skip_seq_thresh_kb = SKIP_SEQUENTIAL_THRESHOLD;

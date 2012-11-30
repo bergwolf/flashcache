@@ -212,7 +212,7 @@ flashcache_dirty_thresh_sysctl(ctl_table *table, int write,
  * entries - zero padded at the end ! Therefore the NUM_*_SYSCTLS
  * is 1 more than then number of sysctls.
  */
-#define FLASHCACHE_NUM_WRITEBACK_SYSCTLS	17
+#define FLASHCACHE_NUM_WRITEBACK_SYSCTLS	18
 
 static struct flashcache_writeback_sysctl_table {
 	struct ctl_table_header *sysctl_header;
@@ -222,6 +222,15 @@ static struct flashcache_writeback_sysctl_table {
 	ctl_table		root[2];
 } flashcache_writeback_sysctl = {
 	.vars = {
+		{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
+			.ctl_name	= CTL_UNNUMBERED,
+#endif
+			.procname	= "cache_readmiss",
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= &proc_dointvec,
+		},
 		{
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
 			.ctl_name	= CTL_UNNUMBERED,
@@ -609,6 +618,8 @@ flashcache_find_sysctl_data(struct cache_c *dmc, ctl_table *vars)
 		return &dmc->sysctl_fast_remove;
 	else if (strcmp(vars->procname, "cache_all") == 0) 
 		return &dmc->sysctl_cache_all;
+	else if (strcmp(vars->procname, "cache_readmiss") == 0)
+		return &dmc->sysctl_cache_readmiss;
 	else if (strcmp(vars->procname, "fallow_clean_speed") == 0) 
 		return &dmc->sysctl_fallow_clean_speed;
 	else if (strcmp(vars->procname, "fallow_delay") == 0) 
