@@ -324,6 +324,8 @@ struct kcached_job {
 		struct dm_io_region cache;
 #endif
 	} job_io_regions;
+#define kcached_diskdev job_io_regions.disk.bdev
+#define kcached_cachedev job_io_regions.cache.bdev
 	int    index;
 	int    action;
 	int 	error;
@@ -467,6 +469,10 @@ struct cache_md_block_head {
 	struct kcached_job	*queued_updates, *md_io_inprog;
 };
 
+struct md_work_info {
+	struct block_device *bdev;
+};
+
 #define MIN_JOBS 1024
 
 /* Default values for sysctls */
@@ -558,12 +564,12 @@ int flashcache_pending_empty(void);
 int flashcache_io_empty(void);
 int flashcache_md_io_empty(void);
 int flashcache_md_complete_empty(void);
-void flashcache_md_write_done(struct kcached_job *job);
-void flashcache_do_pending(struct kcached_job *job);
+void flashcache_md_write_done(struct kcached_job *job, void *unused);
+void flashcache_do_pending(struct kcached_job *job, void *unused);
 void flashcache_md_write(struct kcached_job *job);
-void flashcache_md_write_kickoff(struct kcached_job *job);
-void flashcache_do_io(struct kcached_job *job);
-void flashcache_uncached_io_complete(struct kcached_job *job);
+void flashcache_md_write_kickoff(struct kcached_job *job, void *unused);
+void flashcache_do_io(struct kcached_job *job, void *data);
+void flashcache_uncached_io_complete(struct kcached_job *job, void *unused);
 void flashcache_clean_set(struct cache_c *dmc, int set);
 void flashcache_sync_all(struct cache_c *dmc);
 void flashcache_reclaim_lru_movetail(struct cache_c *dmc, int index);

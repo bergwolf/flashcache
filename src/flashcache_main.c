@@ -503,7 +503,7 @@ out:
 }
 
 void
-flashcache_do_pending(struct kcached_job *job)
+flashcache_do_pending(struct kcached_job *job, void *unused)
 {
 	if (job->error)
 		flashcache_do_pending_error(job);
@@ -511,14 +511,28 @@ flashcache_do_pending(struct kcached_job *job)
 		flashcache_do_pending_noerror(job);
 }
 
+static void
+flashcache_prepare_unplug(struct md_work_info *worker,
+			  struct block_device *bdev)
+{
+	if (likely(worker->bdev == bdev))
+		return;
+	if (worker->bdev != NULL)
+		blk_unplug(bdev_get_queue(worker->bdev));
+	worker->bdev = bdev;
+}
+
 void
-flashcache_do_io(struct kcached_job *job)
+flashcache_do_io(struct kcached_job *job, void *data)
 {
 	struct bio *bio = job->bio;
+	struct md_work_info *worker = (struct md_work_info *)data;
 	int r = 0;
 	
 	VERIFY(job->action == READFILL);
 	VERIFY(job->action == READFILL);
+	VERIFY(worker != NULL);
+	flashcache_prepare_unplug(worker, job->kcached_cachedev);
 #ifdef FLASHCACHE_DO_CHECKSUMS
 	flashcache_store_checksum(job);
 	job->dmc->flashcache_stats.checksum_store++;
@@ -732,7 +746,7 @@ flashcache_free_md_sector(struct kcached_job *job)
 }
 
 void
-flashcache_md_write_kickoff(struct kcached_job *job)
+flashcache_md_write_kickoff(struct kcached_job *job, void *unused)
 {
 	struct cache_c *dmc = job->dmc;	
 	struct flash_cacheblock *md_block;
@@ -808,7 +822,7 @@ flashcache_md_write_kickoff(struct kcached_job *job)
 }
 
 void
-flashcache_md_write_done(struct kcached_job *job)
+flashcache_md_write_done(struct kcached_job *job, void *unused)
 {
 	struct cache_c *dmc = job->dmc;
 	struct cache_md_block_head *md_block_head;
@@ -855,7 +869,7 @@ flashcache_md_write_done(struct kcached_job *job)
 					      job->error, cacheblk->dbn);
 				}
 				spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
-				flashcache_do_pending(job);
+				flashcache_do_pending(job, NULL);
 			} else {
 				cacheblk->cache_state &= ~BLOCK_IO_INPROG;
 				spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
@@ -894,7 +908,7 @@ flashcache_md_write_done(struct kcached_job *job)
 					      job->error, cacheblk->dbn);
 				}
 				spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
-				flashcache_do_pending(job);
+				flashcache_do_pending(job, NULL);
 			} else {
 				cacheblk->cache_state &= ~BLOCK_IO_INPROG;
 				spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
@@ -921,7 +935,7 @@ flashcache_md_write_done(struct kcached_job *job)
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		VERIFY(job->action == WRITEDISK || job->action == WRITECACHE ||
 		       job->action == WRITEDISK_SYNC);
-		flashcache_md_write_kickoff(job);
+		flashcache_md_write_kickoff(job, NULL);
 	} else {
 		md_block_head->nr_in_prog = 0;
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
@@ -1019,7 +1033,7 @@ flashcache_kcopyd_callback(int read_err, unsigned int write_err, void *context)
 			dmc->flashcache_errors.disk_write_errors++;
 			job->error = write_err;
 		}
-		flashcache_do_pending(job);
+		flashcache_do_pending(job, NULL);
 		flashcache_clean_set(dmc, index / dmc->assoc); /* Kick off more cleanings */
 		dmc->flashcache_stats.cleanings++;
 	}
@@ -1841,7 +1855,7 @@ flashcache_kcopyd_callback_sync(int read_err, unsigned int write_err, void *cont
 			dmc->flashcache_errors.disk_write_errors++;			
 			job->error = write_err;
 		}
-		flashcache_do_pending(job);
+		flashcache_do_pending(job, NULL);
 		flashcache_sync_blocks(dmc);  /* Kick off more cleanings */
 		dmc->flashcache_stats.cleanings++;
 	}
@@ -2018,7 +2032,7 @@ flashcache_sync_all(struct cache_c *dmc)
  * What we try to avoid here is inconsistencies between disk and the ssd cache.
  */
 void 
-flashcache_uncached_io_complete(struct kcached_job *job)
+flashcache_uncached_io_complete(struct kcached_job *job, void *unused)
 {
 	struct cache_c *dmc = job->dmc;
 	unsigned long flags;

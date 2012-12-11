@@ -352,13 +352,13 @@ push_md_complete(struct kcached_job *job)
 }
 
 static void
-process_jobs(struct list_head *jobs,
-	     void (*fn) (struct kcached_job *))
+process_jobs(struct list_head *jobs, void *data,
+	     void (*fn) (struct kcached_job *, void *))
 {
 	struct kcached_job *job;
 
 	while ((job = pop(jobs)))
-		(void)fn(job);
+		(void)fn(job, data);
 }
 
 void 
@@ -368,11 +368,16 @@ do_work(void *unused)
 do_work(struct work_struct *unused)
 #endif
 {
-	process_jobs(&_md_complete_jobs, flashcache_md_write_done);
-	process_jobs(&_pending_jobs, flashcache_do_pending);
-	process_jobs(&_md_io_jobs, flashcache_md_write_kickoff);
-	process_jobs(&_io_jobs, flashcache_do_io);
-	process_jobs(&_uncached_io_complete_jobs, flashcache_uncached_io_complete);
+	struct md_work_info md_worker = { NULL, };
+
+	process_jobs(&_md_complete_jobs, &md_worker, flashcache_md_write_done);
+	process_jobs(&_pending_jobs, &md_worker, flashcache_do_pending);
+	process_jobs(&_md_io_jobs, &md_worker, flashcache_md_write_kickoff);
+	process_jobs(&_io_jobs, &md_worker, flashcache_do_io);
+	process_jobs(&_uncached_io_complete_jobs, &md_worker, flashcache_uncached_io_complete);
+
+	if (md_worker.bdev != NULL)
+		blk_unplug(bdev_get_queue(md_worker.bdev));
 }
 
 struct kcached_job *
