@@ -824,7 +824,7 @@ flashcache_md_write_kickoff(struct kcached_job *job, void *data)
 }
 
 void
-flashcache_md_write_done(struct kcached_job *job, void *unused)
+flashcache_md_write_done(struct kcached_job *job, void *data)
 {
 	struct cache_c *dmc = job->dmc;
 	struct cache_md_block_head *md_block_head;
@@ -864,7 +864,6 @@ flashcache_md_write_done(struct kcached_job *job, void *unused)
 				cacheblk->cache_state |= DIRTY;
 			} else
 				dmc->flashcache_errors.ssd_write_errors++;
-			flashcache_bio_endio(job->bio, job->error, dmc, &job->io_start_time);
 			if (job->error || cacheblk->nr_queued > 0) {
 				if (job->error) {
 					DMERR("flashcache: WRITE: Cache metadata write failed ! error %d block %lu", 
@@ -937,7 +936,7 @@ flashcache_md_write_done(struct kcached_job *job, void *unused)
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		VERIFY(job->action == WRITEDISK || job->action == WRITECACHE ||
 		       job->action == WRITEDISK_SYNC);
-		flashcache_md_write_kickoff(job, NULL);
+		flashcache_md_write_kickoff(job, data);
 	} else {
 		md_block_head->nr_in_prog = 0;
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
@@ -963,6 +962,10 @@ flashcache_md_write(struct kcached_job *job)
 	
 	VERIFY(job->action == WRITEDISK || job->action == WRITECACHE || 
 	       job->action == WRITEDISK_SYNC);
+	if (job->action == WRITECACHE) {
+		flashcache_bio_endio(job->bio, 0, dmc, &job->io_start_time);
+		job->bio = NULL;
+	}
 	md_block_head = &dmc->md_blocks_buf[INDEX_TO_MD_BLOCK(dmc, job->index)];
 	spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 	/* If a write is in progress for this metadata sector, queue this update up */
