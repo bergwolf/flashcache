@@ -567,7 +567,7 @@ int flashcache_md_complete_empty(void);
 void flashcache_md_write_done(struct kcached_job *job, void *unused);
 void flashcache_do_pending(struct kcached_job *job, void *unused);
 void flashcache_md_write(struct kcached_job *job);
-void flashcache_md_write_kickoff(struct kcached_job *job, void *unused);
+void flashcache_md_write_kickoff(struct kcached_job *job, void *data);
 void flashcache_do_io(struct kcached_job *job, void *data);
 void flashcache_uncached_io_complete(struct kcached_job *job, void *unused);
 void flashcache_clean_set(struct cache_c *dmc, int set);

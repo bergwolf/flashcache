@@ -515,7 +515,7 @@ static void
 flashcache_prepare_unplug(struct md_work_info *worker,
 			  struct block_device *bdev)
 {
-	if (likely(worker->bdev == bdev))
+	if (worker == NULL || worker->bdev == bdev)
 		return;
 	if (worker->bdev != NULL)
 		blk_unplug(bdev_get_queue(worker->bdev));
@@ -746,7 +746,7 @@ flashcache_free_md_sector(struct kcached_job *job)
 }
 
 void
-flashcache_md_write_kickoff(struct kcached_job *job, void *unused)
+flashcache_md_write_kickoff(struct kcached_job *job, void *data)
 {
 	struct cache_c *dmc = job->dmc;	
 	struct flash_cacheblock *md_block;
@@ -759,6 +759,7 @@ flashcache_md_write_kickoff(struct kcached_job *job, void *unused)
 	int i;
 	struct cache_md_block_head *md_block_head;
 	struct kcached_job *orig_job = job;
+	struct md_work_info *worker = (struct md_work_info *)data;
 	unsigned long flags;
 
 	if (flashcache_alloc_md_sector(job)) {
@@ -816,6 +817,7 @@ flashcache_md_write_kickoff(struct kcached_job *job, void *unused)
 	where.sector = (1 + INDEX_TO_MD_BLOCK(dmc, orig_job->index)) * MD_SECTORS_PER_BLOCK(dmc);
 	dmc->flashcache_stats.ssd_writes++;
 	dmc->flashcache_stats.md_ssd_writes++;
+	flashcache_prepare_unplug(worker, orig_job->kcached_cachedev);
 	dm_io_async_bvec(1, &where, WRITE,
 			 &orig_job->md_io_bvec,
 			 flashcache_md_write_callback, orig_job);
