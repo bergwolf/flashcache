@@ -589,7 +589,7 @@ flashcache_writeback_load(struct cache_c *dmc)
 	 * We don't know what the preferred block size is, just read off 
 	 * the default md blocksize.
 	 */
-	header = (struct flash_superblock *)vmalloc(DEFAULT_MD_BLOCK_SIZE_BYTES);
+	header = (struct flash_superblock *)vmalloc(DEFAULT_MD_BLOCK_SIZE);
 	if (!header) {
 		DMERR("flashcache_writeback_load: Unable to allocate memory");
 		return 1;
@@ -1088,11 +1088,8 @@ init:
 
 	dmc->sync_index = 0;
 	dmc->clean_inprog = 0;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)
+
 	ti->split_io = dmc->block_size;
-#else
-	ti->max_io_len = dmc->block_size;
-#endif
 	ti->private = dmc;
 
 	/* Cleaning Thresholds */
@@ -1254,12 +1251,10 @@ flashcache_dtr_stats_print(struct cache_c *dmc)
 	/* All modes */
         DMINFO("\tdisk reads(%lu), disk writes(%lu) ssd reads(%lu) ssd writes(%lu)\n" \
                "\tuncached reads(%lu), uncached writes(%lu), uncached IO requeue(%lu)\n" \
-	       "\tdisk read errors(%d), disk write errors(%d) ssd read errors(%d) ssd write errors(%d)\n" \
 	       "\tuncached sequential reads(%lu), uncached sequential writes(%lu)\n" \
                "\tpid_adds(%lu), pid_dels(%lu), pid_drops(%lu) pid_expiry(%lu)",
                stats->disk_reads, stats->disk_writes, stats->ssd_reads, stats->ssd_writes,
                stats->uncached_reads, stats->uncached_writes, stats->uncached_io_requeue,
-               dmc->flashcache_errors.disk_read_errors, dmc->flashcache_errors.disk_write_errors, dmc->flashcache_errors.ssd_read_errors, dmc->flashcache_errors.ssd_write_errors,
 	       stats->uncached_sequential_reads, stats->uncached_sequential_writes,
                stats->pid_adds, stats->pid_dels, stats->pid_drops, stats->expiry);
 	if (dmc->size > 0) {
@@ -1436,12 +1431,10 @@ flashcache_status_info(struct cache_c *dmc, status_type_t type,
 	/* All modes */
 	DMEMIT("\tdisk reads(%lu), disk writes(%lu) ssd reads(%lu) ssd writes(%lu)\n" \
 	       "\tuncached reads(%lu), uncached writes(%lu), uncached IO requeue(%lu)\n" \
-	       "\tdisk read errors(%d), disk write errors(%d) ssd read errors(%d) ssd write errors(%d)\n" \
 	       "\tuncached sequential reads(%lu), uncached sequential writes(%lu)\n" \
 	       "\tpid_adds(%lu), pid_dels(%lu), pid_drops(%lu) pid_expiry(%lu)",
 	       stats->disk_reads, stats->disk_writes, stats->ssd_reads, stats->ssd_writes,
 	       stats->uncached_reads, stats->uncached_writes, stats->uncached_io_requeue,
-               dmc->flashcache_errors.disk_read_errors, dmc->flashcache_errors.disk_write_errors, dmc->flashcache_errors.ssd_read_errors, dmc->flashcache_errors.ssd_write_errors,
 	       stats->uncached_sequential_reads, stats->uncached_sequential_writes,
 	       stats->pid_adds, stats->pid_dels, stats->pid_drops, stats->expiry);
 	if (dmc->sysctl_io_latency_hist) {
@@ -1514,15 +1507,9 @@ flashcache_status_table(struct cache_c *dmc, status_type_t type,
  *  Output cache stats upon request of device status;
  *  Output cache configuration upon request of table status.
  */
-int
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0)
+int 
 flashcache_status(struct dm_target *ti, status_type_t type,
-		  unsigned int unused_status_flags,
-		  char *result, unsigned int maxlen)
-#else
-flashcache_status(struct dm_target *ti, status_type_t type,
-		  char *result, unsigned int maxlen)
-#endif
+	     char *result, unsigned int maxlen)
 {
 	struct cache_c *dmc = (struct cache_c *) ti->private;
 	
