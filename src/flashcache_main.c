@@ -1557,7 +1557,7 @@ flashcache_write_miss(struct cache_c *dmc, struct bio *bio, int index, int submi
 		job->action = WRITECACHE; 
 		if (dmc->cache_mode == FLASHCACHE_WRITE_BACK) {
 			/* Write data to the cache */		
-			dm_io_async_bvec(1, &job->job_io_regions.cache, WRITE, 
+			dm_io_async_bvec(1, &job->job_io_regions.cache, bio->bi_rw, 
 					 bio->bi_io_vec + bio->bi_idx,
 					 flashcache_io_callback, job, submit);
 		} else {
@@ -1569,7 +1569,7 @@ flashcache_write_miss(struct cache_c *dmc, struct bio *bio, int index, int submi
 #else
 					 (struct dm_io_region *)&job->job_io_regions, 
 #endif
-					 WRITE, 
+					 bio->bi_rw, 
 					 bio->bi_io_vec + bio->bi_idx,
 					 flashcache_io_callback, job, submit);
 		}
@@ -1618,7 +1618,7 @@ flashcache_write_hit(struct cache_c *dmc, struct bio *bio, int index, int submit
 			job->action = WRITECACHE;
 			if (dmc->cache_mode == FLASHCACHE_WRITE_BACK) {
 				/* Write data to the cache */
-				dm_io_async_bvec(1, &job->job_io_regions.cache, WRITE, 
+				dm_io_async_bvec(1, &job->job_io_regions.cache, bio->bi_rw, 
 						 bio->bi_io_vec + bio->bi_idx,
 						 flashcache_io_callback, job, submit);
 				flashcache_clean_set(dmc, index / dmc->assoc);
@@ -1632,7 +1632,7 @@ flashcache_write_hit(struct cache_c *dmc, struct bio *bio, int index, int submit
 #else
 						 (struct dm_io_region *)&job->job_io_regions, 
 #endif
-						 WRITE, 
+						 bio->bi_rw, 
 						 bio->bi_io_vec + bio->bi_idx,
 						 flashcache_io_callback, job, submit);				
 			}
@@ -2131,7 +2131,7 @@ flashcache_start_uncached_io(struct cache_c *dmc, struct bio *bio, int submit)
 	}
 	atomic_inc(&dmc->nr_jobs);
 	dm_io_async_bvec(1, &job->job_io_regions.disk,
-			 ((is_write) ? WRITE : READ), 
+			 ((is_write) ? bio->bi_rw: READ), 
 			 bio->bi_io_vec + bio->bi_idx,
 			 flashcache_uncached_io_callback, job, submit);
 }
