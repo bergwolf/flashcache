@@ -1547,6 +1547,7 @@ static struct target_type flashcache_request_based_target = {
 	.map_rq = flashcache_map_rq,
 	.status = flashcache_status,
 	.ioctl 	= flashcache_ioctl,
+	.io_hints = flashcache_io_hints,
 	.iterate_devices = flashcache_iterate_devices,
 };
 

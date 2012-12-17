@@ -523,6 +523,7 @@ int flashcache_map_rq(struct dm_target *ti, struct request *clone,
 		union map_info *map_context);
 int flashcache_mk_rq(struct dm_target *ti, struct request_queue *q,
 		struct bio *bio);
+void flashcache_io_hints(struct dm_target *ti, struct queue_limits *limits);
 int flashcache_ctr(struct dm_target *ti, unsigned int argc,
 		   char **argv);
 void flashcache_dtr(struct dm_target *ti);

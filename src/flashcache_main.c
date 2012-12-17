@@ -1726,6 +1726,28 @@ static inline void blk_partition_remap(struct bio *bio)
 	}
 }
 
+void
+flashcache_io_hints(struct dm_target *ti, struct queue_limits *limits)
+{
+	struct cache_c *dmc = (struct cache_c *) ti->private;
+	struct request_queue *q;
+	unsigned int max_hw_sectors = 0;
+
+	if (dmc->disk_dev) {
+		q = bdev_get_queue(dmc->disk_dev->bdev);
+		max_hw_sectors = queue_max_hw_sectors(q);
+	}
+
+	if (dmc->cache_dev) {
+		q = bdev_get_queue(dmc->cache_dev->bdev);
+		max_hw_sectors = min_t(unsigned int, max_hw_sectors,
+				       queue_max_hw_sectors(q));
+	}
+
+	if (max_hw_sectors > 0)
+		blk_limits_max_hw_sectors(limits, max_hw_sectors);
+}
+
 int
 flashcache_map_rq(struct dm_target *ti, struct request *clone,
 		union map_info *map_context)
@@ -2143,6 +2165,7 @@ EXPORT_SYMBOL(flashcache_do_pending);
 EXPORT_SYMBOL(flashcache_do_io);
 EXPORT_SYMBOL(flashcache_map);
 EXPORT_SYMBOL(flashcache_mk_rq);
+EXPORT_SYMBOL(flashcache_io_hints);
 EXPORT_SYMBOL(flashcache_write);
 EXPORT_SYMBOL(flashcache_inval_blocks);
 EXPORT_SYMBOL(flashcache_inval_block_set);
