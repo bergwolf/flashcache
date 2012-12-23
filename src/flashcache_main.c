@@ -716,6 +716,8 @@ flashcache_md_write_kickoff(struct kcached_job *job)
 	md_block_head->queued_updates = NULL;
 	md_block = job->md_block;
 	md_block_ix = INDEX_TO_MD_BLOCK(dmc, job->index) * MD_SLOTS_PER_BLOCK(dmc);
+	if (md_block_head->md_io_inprog == NULL)
+		dmc->flashcache_stats.md_write_batch++;
 	/* First copy out the entire md block */
 	for (i = 0 ; 
 	     i < MD_SLOTS_PER_BLOCK(dmc) && md_block_ix < dmc->size ; 
@@ -740,7 +742,6 @@ flashcache_md_write_kickoff(struct kcached_job *job)
 	for (job = md_block_head->md_io_inprog ; 
 	     job != NULL ;
 	     job = job->next) {
-		dmc->flashcache_stats.md_write_batch++;
 		if (job->action == WRITECACHE) {
 			/* DIRTY the cache block */
 			md_block[INDEX_TO_MD_BLOCK_OFFSET(dmc, job->index)].cache_state = 
