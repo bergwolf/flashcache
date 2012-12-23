@@ -541,8 +541,8 @@ void flashcache_store_checksum(struct kcached_job *job);
 int flashcache_validate_checksum(struct kcached_job *job);
 int flashcache_read_compute_checksum(struct cache_c *dmc, int index, void *block);
 #endif
-struct kcached_job *pop(struct list_head *jobs);
-void push(struct list_head *jobs, struct kcached_job *job);
+struct kcached_job *pop(struct list_head *jobs, spinlock_t *);
+void push(struct list_head *jobs, struct kcached_job *job, spinlock_t *);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
 void do_work(void *unused);
 #else

@@ -56,7 +56,11 @@
 #endif
 #include "flashcache.h"
 
-static DEFINE_SPINLOCK(_job_lock);
+static DEFINE_SPINLOCK(_md_comp_job_lock);
+static DEFINE_SPINLOCK(_pending_job_lock);
+static DEFINE_SPINLOCK(_md_io_job_lock);
+static DEFINE_SPINLOCK(_io_job_lock);
+static DEFINE_SPINLOCK(_uncached_io_comp_job_lock);
 
 extern mempool_t *_job_pool;
 extern mempool_t *_pending_job_pool;
@@ -297,68 +301,76 @@ flashcache_validate_checksum(struct kcached_job *job)
  * Functions to push and pop a job onto the head of a given job list.
  */
 struct kcached_job *
-pop(struct list_head *jobs)
+pop(struct list_head *jobs, spinlock_t *lock)
 {
 	struct kcached_job *job = NULL;
 	unsigned long flags;
 
-	spin_lock_irqsave(&_job_lock, flags);
+	spin_lock_irqsave(lock, flags);
 	if (!list_empty(jobs)) {
 		job = list_entry(jobs->next, struct kcached_job, list);
 		list_del(&job->list);
 	}
-	spin_unlock_irqrestore(&_job_lock, flags);
+	spin_unlock_irqrestore(lock, flags);
 	return job;
 }
 
 void 
-push(struct list_head *jobs, struct kcached_job *job)
+push(struct list_head *jobs, struct kcached_job *job, spinlock_t *lock)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&_job_lock, flags);
+	spin_lock_irqsave(lock, flags);
 	list_add_tail(&job->list, jobs);
-	spin_unlock_irqrestore(&_job_lock, flags);
+	spin_unlock_irqrestore(lock, flags);
 }
 
 void
 push_pending(struct kcached_job *job)
 {
-	push(&_pending_jobs, job);	
+	push(&_pending_jobs, job, &_pending_job_lock);
 }
 
 void
 push_io(struct kcached_job *job)
 {
-	push(&_io_jobs, job);	
+	push(&_io_jobs, job, &_io_job_lock);
 }
 
 void
 push_uncached_io_complete(struct kcached_job *job)
 {
-	push(&_uncached_io_complete_jobs, job);	
+	push(&_uncached_io_complete_jobs, job, &_uncached_io_comp_job_lock);
 }
 
 void
 push_md_io(struct kcached_job *job)
 {
-	push(&_md_io_jobs, job);	
+	push(&_md_io_jobs, job, &_md_io_job_lock);
 }
 
 void
 push_md_complete(struct kcached_job *job)
 {
-	push(&_md_complete_jobs, job);	
+	push(&_md_complete_jobs, job, &_md_comp_job_lock);
 }
 
 static void
 process_jobs(struct list_head *jobs,
-	     void (*fn) (struct kcached_job *))
+	     void (*fn) (struct kcached_job *), spinlock_t *lock)
 {
-	struct kcached_job *job;
+	struct kcached_job *job, *tmp;
+	LIST_HEAD(todo);
+	unsigned long flags;
 
-	while ((job = pop(jobs)))
+	spin_lock_irqsave(lock, flags);
+	list_splice_init(jobs, &todo);
+	spin_unlock_irqrestore(lock, flags);
+
+	list_for_each_entry_safe(job, tmp, &todo, list) {
+		list_del(&job->list);
 		(void)fn(job);
+	}
 }
 
 void 
@@ -368,11 +380,12 @@ do_work(void *unused)
 do_work(struct work_struct *unused)
 #endif
 {
-	process_jobs(&_md_complete_jobs, flashcache_md_write_done);
-	process_jobs(&_pending_jobs, flashcache_do_pending);
-	process_jobs(&_md_io_jobs, flashcache_md_write_kickoff);
-	process_jobs(&_io_jobs, flashcache_do_io);
-	process_jobs(&_uncached_io_complete_jobs, flashcache_uncached_io_complete);
+	process_jobs(&_md_complete_jobs, flashcache_md_write_done, &_md_comp_job_lock);
+	process_jobs(&_pending_jobs, flashcache_do_pending, &_pending_job_lock);
+	process_jobs(&_md_io_jobs, flashcache_md_write_kickoff, &_md_io_job_lock);
+	process_jobs(&_io_jobs, flashcache_do_io, &_io_job_lock);
+	process_jobs(&_uncached_io_complete_jobs, flashcache_uncached_io_complete,
+		     &_uncached_io_comp_job_lock);
 }
 
 struct kcached_job *
