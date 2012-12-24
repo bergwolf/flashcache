@@ -108,6 +108,7 @@
 struct cacheblock;
 
 struct cache_set {
+	spinlock_t		set_lock;
 	u_int32_t		set_fifo_next;
 	u_int32_t		set_clean_next;
 	u_int16_t		clean_inprog;
@@ -194,10 +195,21 @@ struct cache_c {
 
 	int 			on_ssd_version;
 	
+	/*
+	 * cache, cache_sets are protected by corresponding
+	 * cache_set.set_lock.
+	 */
 	spinlock_t		cache_spin_lock;
 
+	/* cache block may be accessed from IRQ handler */
 	struct cacheblock	*cache;	/* Hash table for cache blocks */
 	struct cache_set	*cache_sets;
+
+	/*
+	 * md_blocks_buf is protected by cache_md_lock.
+	 * May be accessed from IRQ handler.
+	 */
+	spinlock_t		cache_md_lock;
 	struct cache_md_block_head *md_blocks_buf;
 
 	unsigned int md_block_size;	/* Metadata block size in sectors */
@@ -519,6 +531,90 @@ struct dbn_index_pair {
 
 /* Inject a 5s delay between syncing blocks and metadata */
 #define FLASHCACHE_SYNC_REMOVE_DELAY		5000
+
+static inline void
+dmc_cache_set_lock(struct cache_c *dmc, int set_num)
+{
+	spin_lock(&dmc->cache_sets[set_num].set_lock);
+}
+
+static inline void
+dmc_cache_set_lock_irqsave(struct cache_c *dmc, int set_num, unsigned long *flags)
+{
+	spin_lock_irqsave(&dmc->cache_sets[set_num].set_lock, *flags);
+}
+
+static inline void
+dmc_cache_set_lock_irq(struct cache_c *dmc, int set_num)
+{
+	spin_lock_irq(&dmc->cache_sets[set_num].set_lock);
+}
+
+static inline void
+dmc_cache_set_unlock(struct cache_c *dmc, int set_num)
+{
+	spin_unlock(&dmc->cache_sets[set_num].set_lock);
+}
+
+static inline void
+dmc_cache_set_unlock_irqrestore(struct cache_c *dmc, int set_num, unsigned long flags)
+{
+	spin_unlock_irqrestore(&dmc->cache_sets[set_num].set_lock, flags);
+}
+
+static inline void
+dmc_cache_set_unlock_irq(struct cache_c *dmc, int set_num)
+{
+	spin_unlock_irq(&dmc->cache_sets[set_num].set_lock);
+}
+
+static inline int
+dmc_is_cache_set_locked(struct cache_c *dmc, int set_num)
+{
+	return spin_is_locked(&dmc->cache_sets[set_num].set_lock);
+}
+
+static inline void
+dmc_cache_index_lock(struct cache_c *dmc, int index)
+{
+	dmc_cache_set_lock(dmc, index / dmc->assoc);
+}
+
+static inline void
+dmc_cache_index_lock_irqsave(struct cache_c *dmc, int index, unsigned long *flags)
+{
+	dmc_cache_set_lock_irqsave(dmc, index / dmc->assoc, flags);
+}
+
+static inline void
+dmc_cache_index_lock_irq(struct cache_c *dmc, int index)
+{
+	dmc_cache_set_lock_irq(dmc, index / dmc->assoc);
+}
+
+static inline void
+dmc_cache_index_unlock(struct cache_c *dmc, int index)
+{
+	dmc_cache_set_unlock(dmc, index / dmc->assoc);
+}
+
+static inline void
+dmc_cache_index_unlock_irqrestore(struct cache_c *dmc, int index, unsigned long flags)
+{
+	dmc_cache_set_unlock_irqrestore(dmc, index / dmc->assoc, flags);
+}
+
+static inline void
+dmc_cache_index_unlock_irq(struct cache_c *dmc, int index)
+{
+	dmc_cache_set_unlock_irq(dmc, index / dmc->assoc);
+}
+
+static inline int
+dmc_is_cache_index_locked(struct cache_c *dmc, int index)
+{
+	return dmc_is_cache_set_locked(dmc, index / dmc->assoc);
+}
 
 int flashcache_map(struct dm_target *ti, struct bio *bio,
 		   union map_info *map_context);
