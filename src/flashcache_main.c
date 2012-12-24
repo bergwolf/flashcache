@@ -1925,14 +1925,10 @@ flashcache_sync_blocks(struct cache_c *dmc)
 void
 flashcache_sync_all(struct cache_c *dmc)
 {
-	unsigned long flags;
-
 	if (dmc->cache_mode != FLASHCACHE_WRITE_BACK)
 		return;
 	dmc->sysctl_stop_sync = 0;
-	spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 	dmc->sync_index = 0;
-	spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);	
 	flashcache_sync_blocks(dmc);
 }
 
