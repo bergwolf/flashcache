@@ -1048,6 +1048,23 @@ init:
 		goto bad3;
 	}				
 
+	if (dmc->cache_mode == FLASHCACHE_WRITE_BACK) {
+		order = (dmc->md_blocks - 1) * sizeof(struct cache_md_block_head);
+		dmc->md_blocks_buf = (struct cache_md_block_head *)vmalloc(order);
+		if (!dmc->md_blocks_buf) {
+			ti->error = "Unable to allocate memory";
+			r = -ENOMEM;
+			vfree((void *)dmc->cache);
+			vfree((void *)dmc->cache_sets);
+			goto bad3;
+		}
+
+		for (i = 0 ; i < dmc->md_blocks - 1 ; i++) {
+			dmc->md_blocks_buf[i].nr_in_prog = 0;
+			dmc->md_blocks_buf[i].queued_updates = NULL;
+		}
+	}
+
 	for (i = 0 ; i < dmc->num_sets ; i++) {
 		dmc->cache_sets[i].set_fifo_next = i * dmc->assoc;
 		dmc->cache_sets[i].set_clean_next = i * dmc->assoc;
@@ -1058,6 +1075,7 @@ init:
 		dmc->cache_sets[i].fallow_next_cleaning = jiffies;
 		dmc->cache_sets[i].lru_tail = FLASHCACHE_LRU_NULL;
 		dmc->cache_sets[i].lru_head = FLASHCACHE_LRU_NULL;
+		spin_lock_init(&dmc->cache_sets[i].set_lock);
 	}
 
 	/* Push all blocks into the set specific LRUs */
@@ -1065,23 +1083,6 @@ init:
 		dmc->cache[i].lru_prev = FLASHCACHE_LRU_NULL;
 		dmc->cache[i].lru_next = FLASHCACHE_LRU_NULL;
 		flashcache_reclaim_lru_movetail(dmc, i);
-	}
-
-	if (dmc->cache_mode == FLASHCACHE_WRITE_BACK) {
-		order = (dmc->md_blocks - 1) * sizeof(struct cache_md_block_head);
-		dmc->md_blocks_buf = (struct cache_md_block_head *)vmalloc(order);
-		if (!dmc->md_blocks_buf) {
-			ti->error = "Unable to allocate memory";
-			r = -ENOMEM;
-			vfree((void *)dmc->cache);
-			vfree((void *)dmc->cache_sets);
-			goto bad3;
-		}		
-
-		for (i = 0 ; i < dmc->md_blocks - 1 ; i++) {
-			dmc->md_blocks_buf[i].nr_in_prog = 0;
-			dmc->md_blocks_buf[i].queued_updates = NULL;
-		}
 	}
 
 	spin_lock_init(&dmc->cache_spin_lock);

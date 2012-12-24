@@ -108,6 +108,7 @@
 struct cacheblock;
 
 struct cache_set {
+	spinlock_t		set_lock;
 	u_int32_t		set_fifo_next;
 	u_int32_t		set_clean_next;
 	u_int16_t		clean_inprog;
@@ -194,6 +195,11 @@ struct cache_c {
 
 	int 			on_ssd_version;
 	
+	/*
+	 * cache, cache_sets and md_blocks_buf are protected by corresponding
+	 * cache_set.set_lock. However, we must make sure no nested locking
+	 * between cache_spin_lock and per set lock.
+	 */
 	spinlock_t		cache_spin_lock;
 
 	struct cacheblock	*cache;	/* Hash table for cache blocks */
@@ -514,6 +520,30 @@ struct dbn_index_pair {
 
 /* Inject a 5s delay between syncing blocks and metadata */
 #define FLASHCACHE_SYNC_REMOVE_DELAY		5000
+
+static inline void
+lock_cache_set(struct cache_c *dmc, int set_num, unsigned long *flags)
+{
+	spin_lock_irqsave(&dmc->cache_sets[set_num].set_lock, *flags);
+}
+
+static inline void
+unlock_cache_set(struct cache_c *dmc, int set_num, unsigned long *flags)
+{
+	spin_unlock_irqrestore(&dmc->cache_sets[set_num].set_lock, *flags);
+}
+
+static inline void
+lock_cache_index(struct cache_c *dmc, int index, unsigned long *flags)
+{
+	lock_cache_set(dmc, index / dmc->assoc, flags);
+}
+
+static inline void
+unlock_cache_index(struct cache_c *dmc, int index, unsigned long *flags)
+{
+	unlock_cache_set(dmc, index / dmc->assoc, flags);
+}
 
 int flashcache_map(struct dm_target *ti, struct bio *bio,
 		   union map_info *map_context);
