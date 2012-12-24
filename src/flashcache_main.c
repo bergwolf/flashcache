@@ -178,7 +178,7 @@ flashcache_io_callback(unsigned long error, void *context)
 	struct cache_c *dmc = job->dmc;
 	struct bio *bio;
 	unsigned long flags;
-	int index = job->index;
+	int index = job->index, cache_state = 0;
 	struct cacheblock *cacheblk = &dmc->cache[index];
 
 	VERIFY(index != -1);		
@@ -194,13 +194,14 @@ flashcache_io_callback(unsigned long error, void *context)
 	case READDISK:
 		DPRINTK("flashcache_io_callback: READDISK  %d",
 			index);
-		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 		if (unlikely(dmc->sysctl_error_inject & READDISK_ERROR)) {
-			job->error = error = -EIO;
-			dmc->sysctl_error_inject &= ~READDISK_ERROR;
+			spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+			if (dmc->sysctl_error_inject & READDISK_ERROR) {
+				job->error = error = -EIO;
+				dmc->sysctl_error_inject &= ~READDISK_ERROR;
+			}
+			spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		}
-		VERIFY(cacheblk->cache_state & DISKREADINPROG);
-		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		if (likely(error == 0)) {
 			/* Kick off the write to the cache */
 			job->action = READFILL;
@@ -208,18 +209,20 @@ flashcache_io_callback(unsigned long error, void *context)
 			schedule_work(&_kcached_wq);
 			return;
 		} else
-			dmc->flashcache_errors.disk_read_errors++;			
+			dmc->flashcache_errors.disk_read_errors++;
+		cache_state = DISKREADINPROG;
 		break;
 	case READCACHE:
 		DPRINTK("flashcache_io_callback: READCACHE %d",
 			index);
-		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 		if (unlikely(dmc->sysctl_error_inject & READCACHE_ERROR)) {
-			job->error = error = -EIO;
-			dmc->sysctl_error_inject &= ~READCACHE_ERROR;
+			spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+			if (dmc->sysctl_error_inject & READCACHE_ERROR) {
+				job->error = error = -EIO;
+				dmc->sysctl_error_inject &= ~READCACHE_ERROR;
+			}
+			spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		}
-		VERIFY(cacheblk->cache_state & CACHEREADINPROG);
-		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		if (unlikely(error))
 			dmc->flashcache_errors.ssd_read_errors++;
 #ifdef FLASHCACHE_DO_CHECKSUMS
@@ -231,30 +234,34 @@ flashcache_io_callback(unsigned long error, void *context)
 			}
 		}
 #endif
-		break;		       
+		cache_state = CACHEREADINPROG;
+		break;
 	case READFILL:
 		DPRINTK("flashcache_io_callback: READFILL %d",
 			index);
-		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 		if (unlikely(dmc->sysctl_error_inject & READFILL_ERROR)) {
-			job->error = error = -EIO;
-			dmc->sysctl_error_inject &= ~READFILL_ERROR;
+			spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+			if (dmc->sysctl_error_inject & READFILL_ERROR) {
+				job->error = error = -EIO;
+				dmc->sysctl_error_inject &= ~READFILL_ERROR;
+			}
+			spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		}
 		if (unlikely(error))
 			dmc->flashcache_errors.ssd_write_errors++;
-		VERIFY(cacheblk->cache_state & DISKREADINPROG);
-		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
+		cache_state = DISKREADINPROG;
 		break;
 	case WRITECACHE:
 		DPRINTK("flashcache_io_callback: WRITECACHE %d",
 			index);
 		if (unlikely(dmc->sysctl_error_inject & WRITECACHE_ERROR)) {
-			job->error = error = -EIO;
-			dmc->sysctl_error_inject &= ~WRITECACHE_ERROR;
+			spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+			if (dmc->sysctl_error_inject & WRITECACHE_ERROR) {
+				job->error = error = -EIO;
+				dmc->sysctl_error_inject &= ~WRITECACHE_ERROR;
+			}
+			spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		}
-		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
-		VERIFY(cacheblk->cache_state & CACHEWRITEINPROG);
-		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		if (likely(error == 0)) {
 			if (dmc->cache_mode == FLASHCACHE_WRITE_BACK) {
 #ifdef FLASHCACHE_DO_CHECKSUMS
@@ -293,6 +300,7 @@ flashcache_io_callback(unsigned long error, void *context)
 				 */
 				dmc->flashcache_errors.disk_write_errors++;
 		}
+		cache_state = CACHEWRITEINPROG;
 		break;
 	}
 	flashcache_bio_endio(bio, error, dmc, &job->io_start_time);
@@ -302,6 +310,7 @@ flashcache_io_callback(unsigned long error, void *context)
 	 * add it to the pending req queue.
 	 */
 	spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+	VERIFY(cacheblk->cache_state & cache_state || cache_state == 0);
 	if (unlikely(error || cacheblk->nr_queued > 0)) {
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		push_pending(job);
