@@ -931,14 +931,15 @@ flashcache_kcopyd_callback(int read_err, unsigned int write_err, void *context)
 	VERIFY(!in_interrupt());
 	DPRINTK("kcopyd_callback: Index %d", index);
 	VERIFY(job->bio == NULL);
-	spin_lock_irqsave(&dmc->cache_spin_lock, flags);
-	VERIFY(dmc->cache[index].cache_state & (DISKWRITEINPROG | VALID | DIRTY));
 	if (unlikely(dmc->sysctl_error_inject & KCOPYD_CALLBACK_ERROR)) {
-		read_err = -EIO;
-		dmc->sysctl_error_inject &= ~KCOPYD_CALLBACK_ERROR;
+		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+		if (dmc->sysctl_error_inject & KCOPYD_CALLBACK_ERROR) {
+			read_err = -EIO;
+			dmc->sysctl_error_inject &= ~KCOPYD_CALLBACK_ERROR;
+		}
+		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 	}
 	if (likely(read_err == 0 && write_err == 0)) {
-		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		flashcache_md_write(job);
 	} else {
 		if (read_err)
@@ -948,6 +949,8 @@ flashcache_kcopyd_callback(int read_err, unsigned int write_err, void *context)
 		/* Disk write failed. We can not purge this block from flash */
 		DMERR("flashcache: Disk writeback failed ! read error %d write error %d block %lu", 
 		      -read_err, -write_err, job->job_io_regions.disk.sector);
+		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+		VERIFY(dmc->cache[index].cache_state & (DISKWRITEINPROG | VALID | DIRTY));
 		VERIFY(dmc->cache_sets[index / dmc->assoc].clean_inprog > 0);
 		VERIFY(dmc->clean_inprog > 0);
 		dmc->cache_sets[index / dmc->assoc].clean_inprog--;
@@ -1756,10 +1759,7 @@ flashcache_kcopyd_callback_sync(int read_err, unsigned int write_err, void *cont
 	VERIFY(!in_interrupt());
 	DPRINTK("kcopyd_callback_sync: Index %d", index);
 	VERIFY(job->bio == NULL);
-	spin_lock_irqsave(&dmc->cache_spin_lock, flags);
-	VERIFY(dmc->cache[index].cache_state & (DISKWRITEINPROG | VALID | DIRTY));
 	if (likely(read_err == 0 && write_err == 0)) {
-		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		flashcache_md_write(job);
 	} else {
 		if (read_err)
@@ -1769,6 +1769,8 @@ flashcache_kcopyd_callback_sync(int read_err, unsigned int write_err, void *cont
 		/* Disk write failed. We can not purge this cache from flash */
 		DMERR("flashcache: Disk writeback failed ! read error %d write error %d block %lu", 
 		      -read_err, -write_err, job->job_io_regions.disk.sector);
+		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
+		VERIFY(dmc->cache[index].cache_state & (DISKWRITEINPROG | VALID | DIRTY));
 		VERIFY(dmc->cache_sets[index / dmc->assoc].clean_inprog > 0);
 		VERIFY(dmc->clean_inprog > 0);
 		dmc->cache_sets[index / dmc->assoc].clean_inprog--;
