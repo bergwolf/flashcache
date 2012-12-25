@@ -1087,6 +1087,7 @@ init:
 	}
 
 	spin_lock_init(&dmc->cache_spin_lock);
+	spin_lock_init(&dmc->pending_job_lock);
 
 	dmc->sync_index = 0;
 	atomic_set(&dmc->clean_inprog, 0);

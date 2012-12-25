@@ -149,7 +149,9 @@ flashcache_enq_pending(struct cache_c *dmc, struct bio* bio,
 		       int index, int action, struct pending_job *job)
 {
 	struct pending_job **head;
-	
+	unsigned long flags;
+
+	spin_lock_irqsave(&dmc->pending_job_lock, flags);
 	head = &dmc->pending_job_hashbuckets[FLASHCACHE_PENDING_JOB_HASH(index)];
 	DPRINTK("flashcache_enq_pending: Queue to pending Q Index %d %llu",
 		index, bio->bi_sector);
@@ -162,6 +164,8 @@ flashcache_enq_pending(struct cache_c *dmc, struct bio* bio,
 	if (*head)
 		(*head)->prev = job;
 	*head = job;
+	spin_unlock_irqrestore(&dmc->pending_job_lock, flags);
+
 	dmc->cache[index].nr_queued++;
 	dmc->flashcache_stats.enqueues++;
 	atomic_inc(&dmc->pending_jobs_count);
@@ -176,8 +180,9 @@ flashcache_deq_pending(struct cache_c *dmc, int index)
 	struct pending_job *node, *next, *movelist = NULL;
 	int moved = 0;
 	struct pending_job **head;
+	unsigned long flags;
 	
-	VERIFY(spin_is_locked(&dmc->cache_spin_lock));
+	spin_lock_irqsave(&dmc->pending_job_lock, flags);
 	head = &dmc->pending_job_hashbuckets[FLASHCACHE_PENDING_JOB_HASH(index)];
 	for (node = *head ; node != NULL ; node = next) {
 		next = node->next;
@@ -203,6 +208,8 @@ flashcache_deq_pending(struct cache_c *dmc, int index)
 			moved++;
 		}
 	}
+	spin_unlock_irqrestore(&dmc->pending_job_lock, flags);
+
 	VERIFY(atomic_read(&dmc->pending_jobs_count) >= moved);
 	atomic_sub(moved, &dmc->pending_jobs_count);
 	return movelist;

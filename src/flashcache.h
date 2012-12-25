@@ -258,6 +258,11 @@ struct cache_c {
 	unsigned long blacklist_expire_check, whitelist_expire_check;
 
 #define PENDING_JOB_HASH_SIZE		32
+	/*
+	 * pending_job_lock protects pending_job_hashbuckets. May be obtained
+	 * while holding cache_spin_lock or per cache_set lock but not vise versa.
+	 */
+	spinlock_t pending_job_lock;
 	struct pending_job *pending_job_hashbuckets[PENDING_JOB_HASH_SIZE];
 	
 	struct cache_c	*next_cache;
