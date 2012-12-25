@@ -213,9 +213,13 @@ struct cache_c {
 	int	cache_mode;
 
 	wait_queue_head_t destroyq;	/* Wait queue for I/O completion */
-	/* XXX - Updates of nr_jobs should happen inside the lock. But doing it outside
-	   is OK since the filesystem is unmounted at this point */
+
+	/* Updates of bellowing atomic counters can happen without locking */
 	atomic_t nr_jobs;		/* Number of I/O jobs */
+	atomic_t clean_inprog;		/* Number of cleaning in progress */
+	atomic_t nr_dirty;		/* Number of dirty blocks in cache */
+	atomic_t cached_blocks;		/* Number of cached blocks */
+	atomic_t pending_jobs_count;
 
 #define SLOW_REMOVE    1                                                                                    
 #define FAST_REMOVE    2
@@ -224,11 +228,7 @@ struct cache_c {
 	int	dirty_thresh_set;	/* Per set dirty threshold to start cleaning */
 	int	max_clean_ios_set;	/* Max cleaning IOs per set */
 	int	max_clean_ios_total;	/* Total max cleaning IOs */
-	int	clean_inprog;
 	int	sync_index;
-	int	nr_dirty;
-	unsigned long cached_blocks;	/* Number of cached blocks */
-	unsigned long pending_jobs_count;
 	int	md_blocks;		/* Numbers of metadata blocks, including header */
 
 	/* Stats */

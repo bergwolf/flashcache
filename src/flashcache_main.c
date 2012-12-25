@@ -383,7 +383,7 @@ flashcache_do_pending_error(struct kcached_job *job)
 	VERIFY(cacheblk->cache_state & VALID);
 	/* Invalidate block if possible */
 	if ((cacheblk->cache_state & DIRTY) == 0) {
-		dmc->cached_blocks--;
+		atomic_dec(&dmc->cached_blocks);
 		dmc->flashcache_stats.pending_inval++;
 		cacheblk->cache_state &= ~VALID;
 		cacheblk->cache_state |= INVALID;
@@ -419,7 +419,7 @@ flashcache_do_pending_noerror(struct kcached_job *job)
 	DPRINTK("flashcache_do_pending: Index %d %lx",
 		index, cacheblk->cache_state);
 	VERIFY(cacheblk->cache_state & VALID);
-	dmc->cached_blocks--;
+	atomic_dec(&dmc->cached_blocks);
 	dmc->flashcache_stats.pending_inval++;
 	cacheblk->cache_state &= ~VALID;
 	cacheblk->cache_state |= INVALID;
@@ -805,7 +805,7 @@ flashcache_md_write_done(struct kcached_job *job)
 			if (likely(job->error == 0)) {
 				if ((cacheblk->cache_state & DIRTY) == 0) {
 					dmc->cache_sets[index / dmc->assoc].nr_dirty++;
-					dmc->nr_dirty++;
+					atomic_inc(&dmc->nr_dirty);
 				}
 				dmc->flashcache_stats.md_write_dirty++;
 				cacheblk->cache_state |= DIRTY;
@@ -842,15 +842,15 @@ flashcache_md_write_done(struct kcached_job *job)
 				dmc->flashcache_stats.md_write_clean++;
 				cacheblk->cache_state &= ~DIRTY;
 				VERIFY(dmc->cache_sets[index / dmc->assoc].nr_dirty > 0);
-				VERIFY(dmc->nr_dirty > 0);
+				VERIFY(atomic_read(&dmc->nr_dirty) > 0);
 				dmc->cache_sets[index / dmc->assoc].nr_dirty--;
-				dmc->nr_dirty--;
+				atomic_dec(&dmc->nr_dirty);
 			} else 
 				dmc->flashcache_errors.ssd_write_errors++;
 			VERIFY(dmc->cache_sets[index / dmc->assoc].clean_inprog > 0);
-			VERIFY(dmc->clean_inprog > 0);
+			VERIFY(atomic_read(&dmc->clean_inprog) > 0);
 			dmc->cache_sets[index / dmc->assoc].clean_inprog--;
-			dmc->clean_inprog--;
+			atomic_dec(&dmc->clean_inprog);
 			if (job->error || cacheblk->nr_queued > 0) {
 				if (job->error) {
 					DMERR("flashcache: CLEAN: Cache metadata write failed ! error %d block %lu", 
@@ -973,9 +973,9 @@ flashcache_kcopyd_callback(int read_err, unsigned int write_err, void *context)
 		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 		VERIFY(dmc->cache[index].cache_state & (DISKWRITEINPROG | VALID | DIRTY));
 		VERIFY(dmc->cache_sets[index / dmc->assoc].clean_inprog > 0);
-		VERIFY(dmc->clean_inprog > 0);
+		VERIFY(atomic_read(&dmc->clean_inprog) > 0);
 		dmc->cache_sets[index / dmc->assoc].clean_inprog--;
-		dmc->clean_inprog--;
+		atomic_dec(&dmc->clean_inprog);
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		/* Set the error in the job and let do_pending() handle the error */
 		if (read_err) {
@@ -1004,7 +1004,7 @@ flashcache_dirty_writeback(struct cache_c *dmc, int index)
 	VERIFY((cacheblk->cache_state & BLOCK_IO_INPROG) == DISKWRITEINPROG);
 	VERIFY(cacheblk->cache_state & DIRTY);
 	dmc->cache_sets[index / dmc->assoc].clean_inprog++;
-	dmc->clean_inprog++;
+	atomic_inc(&dmc->clean_inprog);
 	spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 	job = new_kcached_job(dmc, NULL, index);
 	if (unlikely(dmc->sysctl_error_inject & DIRTY_WRITEBACK_JOB_ALLOC_FAIL)) {
@@ -1027,7 +1027,7 @@ flashcache_dirty_writeback(struct cache_c *dmc, int index)
 	if (unlikely(job == NULL)) {
 		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 		dmc->cache_sets[index / dmc->assoc].clean_inprog--;
-		dmc->clean_inprog--;
+		atomic_dec(&dmc->clean_inprog);
 		flashcache_free_pending_jobs(dmc, cacheblk, -EIO);
 		cacheblk->cache_state &= ~(BLOCK_IO_INPROG);
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
@@ -1084,7 +1084,7 @@ flashcache_can_clean(struct cache_c *dmc,
 		     int nr_writes)
 {
 	return ((cache_set->clean_inprog + nr_writes) < dmc->max_clean_ios_set &&
-		(nr_writes + dmc->clean_inprog) < dmc->max_clean_ios_total);
+		(nr_writes + atomic_read(&dmc->clean_inprog)) < dmc->max_clean_ios_total);
 }
 
 void
@@ -1313,7 +1313,7 @@ flashcache_read_miss(struct cache_c *dmc, struct bio* bio,
 		      cacheblk->dbn);
 		flashcache_bio_endio(bio, -EIO, dmc, NULL);
 		spin_lock_irq(&dmc->cache_spin_lock);
-		dmc->cached_blocks--;
+		atomic_dec(&dmc->cached_blocks);
 		cacheblk->cache_state &= ~VALID;
 		cacheblk->cache_state |= INVALID;
 		flashcache_free_pending_jobs(dmc, cacheblk, -EIO);
@@ -1384,7 +1384,7 @@ flashcache_read(struct cache_c *dmc, struct bio *bio, int submit)
 	if (dmc->cache[index].cache_state & VALID)
 		dmc->flashcache_stats.replace++;
 	else
-		dmc->cached_blocks++;
+		atomic_inc(&dmc->cached_blocks);
 	dmc->cache[index].cache_state = VALID | DISKREADINPROG;
 	dmc->cache[index].dbn = bio->bi_sector;
 	spin_unlock_irq(&dmc->cache_spin_lock);
@@ -1426,7 +1426,7 @@ flashcache_inval_block_set(struct cache_c *dmc, int set, struct bio *bio, int rw
 				dmc->flashcache_stats.rd_invalidates++;
 			if (!(cacheblk->cache_state & (BLOCK_IO_INPROG | DIRTY)) &&
 			    (cacheblk->nr_queued == 0)) {
-				dmc->cached_blocks--;			
+				atomic_dec(&dmc->cached_blocks);
 				DPRINTK("Cache invalidate (!BUSY): Block %llu %lx",
 					start_dbn, cacheblk->cache_state);
 				cacheblk->cache_state = INVALID;
@@ -1536,7 +1536,7 @@ flashcache_write_miss(struct cache_c *dmc, struct bio *bio, int index, int submi
 	if (cacheblk->cache_state & VALID)
 		dmc->flashcache_stats.wr_replace++;
 	else
-		dmc->cached_blocks++;
+		atomic_inc(&dmc->cached_blocks);
 	cacheblk->cache_state = VALID | CACHEWRITEINPROG;
 	cacheblk->dbn = bio->bi_sector;
 	spin_unlock_irq(&dmc->cache_spin_lock);
@@ -1557,7 +1557,7 @@ flashcache_write_miss(struct cache_c *dmc, struct bio *bio, int index, int submi
 		      cacheblk->dbn);
 		flashcache_bio_endio(bio, -EIO, dmc, NULL);
 		spin_lock_irq(&dmc->cache_spin_lock);
-		dmc->cached_blocks--;
+		atomic_dec(&dmc->cached_blocks);
 		cacheblk->cache_state &= ~VALID;
 		cacheblk->cache_state |= INVALID;
 		flashcache_free_pending_jobs(dmc, cacheblk, -EIO);
@@ -1904,9 +1904,9 @@ flashcache_kcopyd_callback_sync(int read_err, unsigned int write_err, void *cont
 		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 		VERIFY(dmc->cache[index].cache_state & (DISKWRITEINPROG | VALID | DIRTY));
 		VERIFY(dmc->cache_sets[index / dmc->assoc].clean_inprog > 0);
-		VERIFY(dmc->clean_inprog > 0);
+		VERIFY(atomic_read(&dmc->clean_inprog) > 0);
 		dmc->cache_sets[index / dmc->assoc].clean_inprog--;
-		dmc->clean_inprog--;
+		atomic_dec(&dmc->clean_inprog);
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 		/* Set the error in the job and let do_pending() handle the error */
 		if (read_err) {
@@ -1936,7 +1936,7 @@ flashcache_dirty_writeback_sync(struct cache_c *dmc, int index)
 	VERIFY((cacheblk->cache_state & BLOCK_IO_INPROG) == DISKWRITEINPROG);
 	VERIFY(cacheblk->cache_state & DIRTY);
 	dmc->cache_sets[index / dmc->assoc].clean_inprog++;
-	dmc->clean_inprog++;
+	atomic_inc(&dmc->clean_inprog);
 	spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
 	job = new_kcached_job(dmc, NULL, index);
 	/*
@@ -1953,7 +1953,7 @@ flashcache_dirty_writeback_sync(struct cache_c *dmc, int index)
 	if (unlikely(job == NULL)) {
 		spin_lock_irqsave(&dmc->cache_spin_lock, flags);
 		dmc->cache_sets[index / dmc->assoc].clean_inprog--;
-		dmc->clean_inprog--;
+		atomic_dec(&dmc->clean_inprog);
 		flashcache_free_pending_jobs(dmc, cacheblk, -EIO);
 		cacheblk->cache_state &= ~(BLOCK_IO_INPROG);
 		spin_unlock_irqrestore(&dmc->cache_spin_lock, flags);
@@ -2015,7 +2015,7 @@ flashcache_sync_blocks(struct cache_c *dmc)
 	spin_lock_irqsave(&dmc->cache_spin_lock, flags);	
 	index = dmc->sync_index;
 	while (index < dmc->size && 
-	       (nr_writes + dmc->clean_inprog) < dmc->max_clean_ios_total) {
+	       (nr_writes + atomic_read(&dmc->clean_inprog)) < dmc->max_clean_ios_total) {
 		VERIFY(nr_writes <= dmc->assoc);
 		if (((index % dmc->assoc) == 0) && (nr_writes > 0)) {
 			/*

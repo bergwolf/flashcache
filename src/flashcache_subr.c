@@ -164,7 +164,7 @@ flashcache_enq_pending(struct cache_c *dmc, struct bio* bio,
 	*head = job;
 	dmc->cache[index].nr_queued++;
 	dmc->flashcache_stats.enqueues++;
-	dmc->pending_jobs_count++;
+	atomic_inc(&dmc->pending_jobs_count);
 }
 
 /*
@@ -203,8 +203,8 @@ flashcache_deq_pending(struct cache_c *dmc, int index)
 			moved++;
 		}
 	}
-	VERIFY(dmc->pending_jobs_count >= moved);
-	dmc->pending_jobs_count -= moved;
+	VERIFY(atomic_read(&dmc->pending_jobs_count) >= moved);
+	atomic_sub(moved, &dmc->pending_jobs_count);
 	return movelist;
 }
 
@@ -765,14 +765,15 @@ void
 flashcache_update_sync_progress(struct cache_c *dmc)
 {
 	u_int64_t dirty_pct;
-	
+	u_int64_t nr_dirty = atomic_read(&dmc->nr_dirty);
+
 	if (dmc->flashcache_stats.cleanings % 1000)
 		return;
-	if (!dmc->nr_dirty || !dmc->size || !printk_ratelimit())
+	if (!nr_dirty || !dmc->size || !printk_ratelimit())
 		return;
-	dirty_pct = ((u_int64_t)dmc->nr_dirty * 100) / dmc->size;
-	printk(KERN_INFO "Flashcache: Cleaning %d Dirty blocks, Dirty Blocks pct %llu%%", 
-	       dmc->nr_dirty, dirty_pct);
+	dirty_pct = (nr_dirty * 100) / dmc->size;
+	printk(KERN_INFO "Flashcache: Cleaning %llu Dirty blocks, Dirty Blocks pct %llu%%",
+	       nr_dirty, dirty_pct);
 	printk(KERN_INFO "\r");
 }
 
