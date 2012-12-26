@@ -278,9 +278,9 @@ flashcache_store_checksum(struct kcached_job *job)
 	unsigned long flags;
 	
 	sum = flashcache_compute_checksum(job->bio);
-	spin_lock_irqsave(&job->dmc->cache_spin_lock, flags);
+	dmc_cache_index_lock_irqsave(dmc, job->index, &flags);
 	job->dmc->cache[job->index].checksum = sum;
-	spin_unlock_irqrestore(&job->dmc->cache_spin_lock, flags);
+	dmc_cache_index_unlock_irqrestore(dmc, job->index, flags);
 }
 
 int
@@ -291,7 +291,7 @@ flashcache_validate_checksum(struct kcached_job *job)
 	unsigned long flags;
 	
 	sum = flashcache_compute_checksum(job->bio);
-	spin_lock_irqsave(&job->dmc->cache_spin_lock, flags);
+	dmc_cache_index_lock_irqsave(dmc, job->index, &flags);
 	if (likely(job->dmc->cache[job->index].checksum == sum)) {
 		job->dmc->flashcache_stats.checksum_valid++;		
 		retval = 0;
@@ -299,7 +299,7 @@ flashcache_validate_checksum(struct kcached_job *job)
 		job->dmc->flashcache_stats.checksum_invalid++;
 		retval = 1;
 	}
-	spin_unlock_irqrestore(&job->dmc->cache_spin_lock, flags);
+	dmc_cache_index_unlock_irqrestore(dmc, job->index, flags);
 	return retval;
 }
 #endif
