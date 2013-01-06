@@ -164,11 +164,11 @@ flashcache_enq_pending(struct cache_c *dmc, struct bio* bio,
 	if (*head)
 		(*head)->prev = job;
 	*head = job;
+	dmc->pending_jobs_count++;
 	spin_unlock_irqrestore(&dmc->pending_job_lock, flags);
 
 	dmc->cache[index].nr_queued++;
 	dmc->flashcache_stats.enqueues++;
-	atomic_inc(&dmc->pending_jobs_count);
 }
 
 /*
@@ -208,10 +208,10 @@ flashcache_deq_pending(struct cache_c *dmc, int index)
 			moved++;
 		}
 	}
+	VERIFY(dmc->pending_jobs_count >= moved);
+	dmc->pending_jobs_count -= moved;
 	spin_unlock_irqrestore(&dmc->pending_job_lock, flags);
 
-	VERIFY(atomic_read(&dmc->pending_jobs_count) >= moved);
-	atomic_sub(moved, &dmc->pending_jobs_count);
 	return movelist;
 }
 

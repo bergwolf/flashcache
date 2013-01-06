@@ -231,7 +231,6 @@ struct cache_c {
 	atomic_t clean_inprog;		/* Number of cleaning in progress */
 	atomic_t nr_dirty;		/* Number of dirty blocks in cache */
 	atomic_t cached_blocks;		/* Number of cached blocks */
-	atomic_t pending_jobs_count;
 
 #define SLOW_REMOVE    1                                                                                    
 #define FAST_REMOVE    2
@@ -276,6 +275,7 @@ struct cache_c {
 	 */
 	spinlock_t pending_job_lock;
 	struct pending_job *pending_job_hashbuckets[PENDING_JOB_HASH_SIZE];
+	int pending_jobs_count;
 	
 	struct cache_c	*next_cache;
 

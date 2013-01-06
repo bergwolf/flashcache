@@ -1092,10 +1092,10 @@ init:
 	spin_lock_init(&dmc->pending_job_lock);
 
 	dmc->sync_index = 0;
+	dmc->pending_jobs_count = 0;
 	atomic_set(&dmc->clean_inprog, 0);
 	atomic_set(&dmc->nr_dirty, 0);
 	atomic_set(&dmc->cached_blocks, 0);
-	atomic_set(&dmc->pending_jobs_count, 0);
 
 	ti->split_io = dmc->block_size;
 	ti->private = dmc;
@@ -1292,7 +1292,7 @@ flashcache_dtr_stats_print(struct cache_c *dmc)
 	       dmc->sysctl_skip_seq_thresh_kb,
 	       dmc->size, atomic_read(&dmc->cached_blocks),
 	       (int)cache_pct, atomic_read(&dmc->nr_dirty), (int)dirty_pct);
-	DMINFO("\tnr_queued(%d)\n", atomic_read(&dmc->pending_jobs_count));
+	DMINFO("\tnr_queued(%d)\n", dmc->pending_jobs_count);
 	DMINFO("Size Hist: ");
 	for (i = 1 ; i <= 32 ; i++) {
 		if (size_hist[i] > 0)
@@ -1502,7 +1502,7 @@ flashcache_status_table(struct cache_c *dmc, status_type_t type,
 		DMEMIT("\tdirty blocks(%d), dirty percent(%d)\n",
 		       atomic_read(&dmc->nr_dirty), (int)dirty_pct);
 	}
-	DMEMIT("\tnr_queued(%d)\n", atomic_read(&dmc->pending_jobs_count));
+	DMEMIT("\tnr_queued(%d)\n", dmc->pending_jobs_count);
 	DMEMIT("Size Hist: ");
 	for (i = 1 ; i <= 32 ; i++) {
 		if (size_hist[i] > 0)
