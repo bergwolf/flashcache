@@ -117,7 +117,7 @@ struct cache_set {
 	u_int16_t		dirty_fallow;
 	unsigned long 		fallow_tstamp;
 	unsigned long 		fallow_next_cleaning;
-};
+} ____cacheline_aligned_in_smp;
 
 struct flashcache_errors {
 	int	disk_read_errors;
@@ -346,7 +346,7 @@ struct pending_job {
 	int	action;	
 	int	index;
 	struct pending_job *prev, *next;
-};
+} ____cacheline_aligned_in_smp;
 #endif /* __KERNEL__ */
 
 /* Cache Modes */
@@ -398,7 +398,7 @@ struct cacheblock {
 #ifdef FLASHCACHE_DO_CHECKSUMS
 	u_int64_t 	checksum;
 #endif
-};
+} ____cacheline_aligned_in_smp;
 
 struct flash_superblock {
 	sector_t size;		/* Cache size */
@@ -473,7 +473,7 @@ struct flash_cacheblock {
 struct cache_md_block_head {
 	u_int32_t		nr_in_prog;
 	struct kcached_job	*queued_updates, *md_io_inprog;
-};
+} ____cacheline_aligned_in_smp;
 
 #define MIN_JOBS 1024
 
