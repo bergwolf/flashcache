@@ -175,7 +175,7 @@ flashcache_kcached_init(struct cache_c *dmc)
 {
 	init_waitqueue_head(&dmc->destroyq);
 	atomic_set(&dmc->nr_jobs, 0);
-	atomic_set(&dmc->remove_in_prog, 0);
+	dmc->remove_in_prog = 0;
 	return 0;
 }
 
@@ -1561,12 +1561,17 @@ static void
 flashcache_sync_for_remove(struct cache_c *dmc)
 {
 	do {
-		atomic_set(&dmc->remove_in_prog, SLOW_REMOVE); /* Stop cleaning of sets */
 		if (!dmc->sysctl_fast_remove) {
 			/* 
 			 * Kick off cache cleaning. client_destroy will wait for cleanings
 			 * to finish.
 			 */
+			dmc->remove_in_prog = SLOW_REMOVE; /* Stop cleaning of sets */
+			/*
+			 * prevention bit gets known as soon as possible, paired
+			 * with smp_rmb().
+			 */
+			smp_wmb();
 			printk(KERN_ALERT "Cleaning %d blocks please WAIT",
 			       atomic_read(&dmc->nr_dirty));
 			/* Tune up the cleaning parameters to clean very aggressively */
@@ -1575,7 +1580,9 @@ flashcache_sync_for_remove(struct cache_c *dmc)
 			flashcache_sync_all(dmc);
 		} else {
 			/* Needed to abort any in-progress cleanings, leave blocks DIRTY */
-			atomic_set(&dmc->remove_in_prog, FAST_REMOVE);
+			dmc->remove_in_prog = FAST_REMOVE;
+			/* same as above... */
+			smp_wmb();
 			printk(KERN_ALERT "Fast flashcache remove Skipping cleaning of %d blocks", 
 			       atomic_read(&dmc->nr_dirty));
 		}

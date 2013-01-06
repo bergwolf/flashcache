@@ -234,7 +234,7 @@ struct cache_c {
 
 #define SLOW_REMOVE    1                                                                                    
 #define FAST_REMOVE    2
-	atomic_t remove_in_prog;
+	unsigned long remove_in_prog;
 
 	int	dirty_thresh_set;	/* Per set dirty threshold to start cleaning */
 	int	max_clean_ios_set;	/* Max cleaning IOs per set */
