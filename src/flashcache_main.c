@@ -730,7 +730,8 @@ flashcache_md_write_kickoff(struct kcached_job *job)
 	md_block_ix = INDEX_TO_MD_BLOCK(dmc, job->index) * MD_SLOTS_PER_BLOCK(dmc);
 	/* First copy out the entire md block */
 	for (i = 0, j = 1; j <= (MD_SLOTS_PER_BLOCK(dmc) >> dmc->assoc_shift); j++) {
-		dmc_cache_index_lock_irqsave(dmc, md_block_ix, &flags);
+		int cache_set = md_block_ix / dmc->assoc;
+		dmc_cache_set_lock_irqsave(dmc, cache_set, &flags);
 		for (; i < (dmc->assoc * j) &&
 		       i < MD_SLOTS_PER_BLOCK(dmc) &&
 		       md_block_ix < dmc->size;
@@ -742,7 +743,7 @@ flashcache_md_write_kickoff(struct kcached_job *job)
 			md_block[i].cache_state = dmc->cache[md_block_ix].cache_state &
 						  (VALID | INVALID | DIRTY);
 		}
-		dmc_cache_index_unlock_irqrestore(dmc, md_block_ix, flags);
+		dmc_cache_set_unlock_irqrestore(dmc, cache_set, flags);
 	}
 	/* Then set/clear the DIRTY bit for the "current" index */
 	if (job->action == WRITECACHE) {
