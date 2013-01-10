@@ -1411,14 +1411,19 @@ flashcache_read(struct cache_c *dmc, struct bio *bio, int submit)
  * Invalidate any colliding blocks if they are !BUSY and !DIRTY. If the colliding
  * block is DIRTY, we need to kick off a write. In both cases, we need to wait 
  * until the underlying IO is finished, and then proceed with the invalidation.
+ *
+ * Enter with set/old_set locked.
+ * Return 0 if invalidation succeeds.
+ * Return 1 if invalidation job pended, cacheset(s) unlocked.
+ * Return < 0 on error, cacheset(s) unlocked.
  */
 static int
-flashcache_inval_block_set(struct cache_c *dmc, int set, int old_set, struct bio *bio, int rw,
-			   struct pending_job *pjob)
+flashcache_inval_block_set(struct cache_c *dmc, int set, int old_set,
+			   struct bio *bio, int rw)
 {
 	sector_t io_start = bio->bi_sector;
 	sector_t io_end = bio->bi_sector + (to_sector(bio->bi_size) - 1);
-	int start_index, end_index, i;
+	int start_index, end_index, i, ret = 0;
 	struct cacheblock *cacheblk;
 	bool start_io = false;
 	
@@ -1433,6 +1438,8 @@ flashcache_inval_block_set(struct cache_c *dmc, int set, int old_set, struct bio
 			continue;
 		if ((io_start >= start_dbn && io_start < end_dbn) ||
 		    (io_end >= start_dbn && io_end < end_dbn)) {
+			struct pending_job *pjob = NULL;
+
 			/* We have a match */
 			if (rw == WRITE)
 				dmc->flashcache_stats.wr_invalidates++;
@@ -1455,6 +1462,20 @@ flashcache_inval_block_set(struct cache_c *dmc, int set, int old_set, struct bio
 			 * on it, the do_pending handler will clean the block
 			 * and then process the pending queue.
 			 */
+			pjob = flashcache_alloc_pending_job(dmc);
+			if (unlikely(dmc->sysctl_error_inject & INVAL_PENDING_JOB_ALLOC_FAIL)) {
+				if (pjob) {
+					flashcache_free_pending_job(pjob);
+					pjob = NULL;
+				}
+				dmc->sysctl_error_inject &= ~INVAL_PENDING_JOB_ALLOC_FAIL;
+			}
+
+			if (pjob == NULL) {
+				ret = -ENOMEM;
+				goto out_unlock;
+			}
+
 			flashcache_enq_pending(dmc, bio, i, INVALIDATE, pjob);
 			if ((cacheblk->cache_state & (DIRTY | BLOCK_IO_INPROG)) == DIRTY) {
 				/* 
@@ -1473,23 +1494,32 @@ flashcache_inval_block_set(struct cache_c *dmc, int set, int old_set, struct bio
 				flashcache_clear_fallow(dmc, i);
 				start_io = true;
 			}
-			if (old_set) {
-				dmc_cache_set_unlock(dmc, set);
-				dmc_cache_set_unlock_irq(dmc, old_set);
-			} else {
-				dmc_cache_set_unlock_irq(dmc, set);
-			}
-			if (start_io)
-				flashcache_dirty_writeback(dmc, i); /* Must inc nr_jobs */
-			return 1;
+			ret = 1;
+			goto out_unlock;
 		}
 	}
-	return 0;
+out:
+	return ret;
+out_unlock:
+	if (old_set) {
+		dmc_cache_set_unlock(dmc, set);
+		dmc_cache_set_unlock_irq(dmc, old_set);
+	} else {
+		dmc_cache_set_unlock_irq(dmc, set);
+	}
+	if (start_io)
+		flashcache_dirty_writeback(dmc, i); /* Must inc nr_jobs */
+	goto out;
 }
 
 /* 
  * Since md will break up IO into blocksize pieces, we only really need to check 
  * the start set and the end set for overlaps.
+ *
+ * Enter with cache set locked.
+ * Return 0 if invalidate succeeds.
+ * Return 1 if invalidate job pended, cache set unlocked.
+ * Return < 0 on error, cache set unlocked.
  */
 static int
 flashcache_inval_blocks(struct cache_c *dmc, struct bio *bio)
@@ -1498,23 +1528,10 @@ flashcache_inval_blocks(struct cache_c *dmc, struct bio *bio)
 	sector_t io_end = bio->bi_sector + (to_sector(bio->bi_size) - 1);
 	int start_set, end_set;
 	int queued;
-	struct pending_job *pjob;
 
-	pjob = flashcache_alloc_pending_job(dmc);
-	if (unlikely(dmc->sysctl_error_inject & INVAL_PENDING_JOB_ALLOC_FAIL)) {
-		if (pjob) {
-			flashcache_free_pending_job(pjob);
-			pjob = NULL;
-		}
-		dmc->sysctl_error_inject &= ~INVAL_PENDING_JOB_ALLOC_FAIL;
-	}
-	if (pjob == NULL) {
-		queued = -ENOMEM;
-		goto out;
-	}
 	start_set = hash_block(dmc, io_start);
 	queued = flashcache_inval_block_set(dmc, start_set, 0, bio,
-					    bio_data_dir(bio), pjob);
+					    bio_data_dir(bio));
 	if (queued)
 		goto out;
 
@@ -1522,12 +1539,10 @@ flashcache_inval_blocks(struct cache_c *dmc, struct bio *bio)
 	if (start_set != end_set) {
 		dmc_cache_set_lock(dmc, end_set);
 		queued = flashcache_inval_block_set(dmc, end_set, start_set,
-						    bio, bio_data_dir(bio), pjob);
+						    bio, bio_data_dir(bio));
 		if (!queued)
 			dmc_cache_set_unlock(dmc, end_set);
 	}
-	if (!queued)
-		flashcache_free_pending_job(pjob);
 out:
 	return queued;
 }
