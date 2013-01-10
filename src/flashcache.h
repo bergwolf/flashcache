@@ -682,6 +682,7 @@ int flashcache_dm_io_sync_vm(struct cache_c *dmc, struct dm_io_region *where,
 void flashcache_update_sync_progress(struct cache_c *dmc);
 void flashcache_enq_pending(struct cache_c *dmc, struct bio* bio,
 			    int index, int action, struct pending_job *job);
+void flashcache_inc_queue_count(struct cache_c *dmc, int index);
 struct pending_job *flashcache_deq_pending(struct cache_c *dmc, int index);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)

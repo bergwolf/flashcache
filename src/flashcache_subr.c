@@ -151,8 +151,6 @@ flashcache_enq_pending(struct cache_c *dmc, struct bio* bio,
 	struct pending_job **head;
 	unsigned long flags;
 
-	spin_lock_irqsave(&dmc->pending_job_lock, flags);
-	head = &dmc->pending_job_hashbuckets[FLASHCACHE_PENDING_JOB_HASH(index)];
 	DPRINTK("flashcache_enq_pending: Queue to pending Q Index %d %llu",
 		index, bio->bi_sector);
 	VERIFY(job != NULL);
@@ -160,13 +158,20 @@ flashcache_enq_pending(struct cache_c *dmc, struct bio* bio,
 	job->index = index;
 	job->bio = bio;
 	job->prev = NULL;
+
+	spin_lock_irqsave(&dmc->pending_job_lock, flags);
+	head = &dmc->pending_job_hashbuckets[FLASHCACHE_PENDING_JOB_HASH(index)];
 	job->next = *head;
 	if (*head)
 		(*head)->prev = job;
 	*head = job;
 	dmc->pending_jobs_count++;
 	spin_unlock_irqrestore(&dmc->pending_job_lock, flags);
+}
 
+void
+flashcache_inc_queue_count(struct cache_c *dmc, int index)
+{
 	dmc->cache[index].nr_queued++;
 	dmc->flashcache_stats.enqueues++;
 }

@@ -1296,11 +1296,13 @@ flashcache_read_hit(struct cache_c *dmc, struct bio* bio, int index, int submit)
 			}
 			dmc->sysctl_error_inject &= ~READ_HIT_PENDING_JOB_ALLOC_FAIL;
 		}
+		flashcache_inc_queue_count(dmc, index);
+		dmc_cache_set_unlock_irq(dmc, index / dmc->assoc);
+
 		if (pjob == NULL)
 			flashcache_bio_endio(bio, -EIO, dmc, NULL);
 		else
 			flashcache_enq_pending(dmc, bio, index, READCACHE, pjob);
-		dmc_cache_set_unlock_irq(dmc, index / dmc->assoc);
 	}
 }
 
@@ -1476,6 +1478,7 @@ flashcache_inval_block_set(struct cache_c *dmc, int set, int old_set,
 				goto out_unlock;
 			}
 
+			flashcache_inc_queue_count(dmc, i);
 			flashcache_enq_pending(dmc, bio, i, INVALIDATE, pjob);
 			if ((cacheblk->cache_state & (DIRTY | BLOCK_IO_INPROG)) == DIRTY) {
 				/* 
@@ -1689,11 +1692,13 @@ flashcache_write_hit(struct cache_c *dmc, struct bio *bio, int index, int submit
 			}
 			dmc->sysctl_error_inject &= ~WRITE_HIT_PENDING_JOB_ALLOC_FAIL;
 		}
+		flashcache_inc_queue_count(dmc, index);
+		dmc_cache_set_unlock_irq(dmc, index / dmc->assoc);
+
 		if (unlikely(pjob == NULL))
 			flashcache_bio_endio(bio, -EIO, dmc, NULL);
 		else
 			flashcache_enq_pending(dmc, bio, index, WRITECACHE, pjob);
-		dmc_cache_set_unlock_irq(dmc, index / dmc->assoc);
 	}
 }
 
