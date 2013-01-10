@@ -192,6 +192,18 @@ flashcache_clear_fallow(struct cache_c *dmc, int index)
 	}
 }
 
+static void
+flashcache_clean_set_work(struct work_struct *work)
+{
+	struct kcached_job *job = container_of(work, struct kcached_job, work);
+	struct cache_c *dmc = job->dmc;
+
+	flashcache_clean_set(dmc, job->index / dmc->assoc);
+	flashcache_free_cache_job(job);
+	if (atomic_dec_and_test(&dmc->nr_jobs))
+		wake_up(&dmc->destroyq);
+}
+
 void 
 flashcache_io_callback(unsigned long error, void *context)
 {
@@ -339,9 +351,9 @@ flashcache_io_callback(unsigned long error, void *context)
 	} else {
 		cacheblk->cache_state &= ~BLOCK_IO_INPROG;
 		dmc_cache_index_unlock_irqrestore(dmc, index, flags);
-		flashcache_free_cache_job(job);
-		if (atomic_dec_and_test(&dmc->nr_jobs))
-			wake_up(&dmc->destroyq);
+		/* queue one clean cache job */
+		INIT_WORK(&job->work, flashcache_clean_set_work);
+		schedule_work(&job->work);
 	}
 }
 
@@ -1343,7 +1355,6 @@ flashcache_read_miss(struct cache_c *dmc, struct bio* bio,
 		dm_io_async_bvec(1, &job->job_io_regions.disk, READ,
 				 bio->bi_io_vec + bio->bi_idx,
 				 flashcache_io_callback, job, submit);
-		flashcache_clean_set(dmc, index / dmc->assoc);
 	}
 }
 
@@ -1385,8 +1396,6 @@ flashcache_read(struct cache_c *dmc, struct bio *bio, int submit)
 		dmc_cache_set_unlock_irq(dmc, set_number);
 		DPRINTK("Cache read: Block %llu(%lu):%s",
 			bio->bi_sector, bio->bi_size, "CACHE MISS & NO ROOM");
-		if (res == -1)
-			flashcache_clean_set(dmc, hash_block(dmc, bio->bi_sector));
 		/* Start uncached IO */
 		flashcache_start_uncached_io(dmc, bio, submit);
 		return;
@@ -1618,7 +1627,6 @@ flashcache_write_miss(struct cache_c *dmc, struct bio *bio, int index, int submi
 					 bio->bi_io_vec + bio->bi_idx,
 					 flashcache_io_callback, job, submit);
 		}
-		flashcache_clean_set(dmc, index / dmc->assoc);
 	}
 }
 
@@ -1667,7 +1675,6 @@ flashcache_write_hit(struct cache_c *dmc, struct bio *bio, int index, int submit
 				dm_io_async_bvec(1, &job->job_io_regions.cache, bio->bi_rw, 
 						 bio->bi_io_vec + bio->bi_idx,
 						 flashcache_io_callback, job, submit);
-				flashcache_clean_set(dmc, index / dmc->assoc);
 			} else {
 				VERIFY(dmc->cache_mode == FLASHCACHE_WRITE_THROUGH);
 				/* Write data to both disk and cache */
@@ -1739,7 +1746,6 @@ flashcache_write(struct cache_c *dmc, struct bio *bio, int submit)
 
 	/* Start uncached IO */
 	flashcache_start_uncached_io(dmc, bio, submit);
-	flashcache_clean_set(dmc, set_number);
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)

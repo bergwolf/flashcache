@@ -337,6 +337,7 @@ struct kcached_job {
 	int 	error;
 	struct flash_cacheblock *md_block;
 	struct bio_vec md_io_bvec;
+	struct work_struct work; /* for clean set work */
 	struct timeval io_start_time;
 	struct kcached_job *next;
 };
