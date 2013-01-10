@@ -65,8 +65,8 @@ static DEFINE_SPINLOCK(_uncached_io_comp_job_lock);
 extern mempool_t *_job_pool;
 extern mempool_t *_pending_job_pool;
 
-extern atomic_t nr_cache_jobs;
-extern atomic_t nr_pending_jobs;
+extern unsigned int nr_cache_jobs;
+extern unsigned int nr_pending_jobs;
 
 LIST_HEAD(_pending_jobs);
 LIST_HEAD(_io_jobs);
@@ -111,7 +111,7 @@ flashcache_alloc_cache_job(void)
 
 	job = mempool_alloc(_job_pool, GFP_NOIO);
 	if (likely(job))
-		atomic_inc(&nr_cache_jobs);
+		nr_cache_jobs++;
 	return job;
 }
 
@@ -119,7 +119,7 @@ void
 flashcache_free_cache_job(struct kcached_job *job)
 {
 	mempool_free(job, _job_pool);
-	atomic_dec(&nr_cache_jobs);
+	nr_cache_jobs--;
 }
 
 struct pending_job *
@@ -129,7 +129,7 @@ flashcache_alloc_pending_job(struct cache_c *dmc)
 
 	job = mempool_alloc(_pending_job_pool, GFP_ATOMIC);
 	if (likely(job))
-		atomic_inc(&nr_pending_jobs);
+		nr_pending_jobs++;
 	else
 		dmc->flashcache_errors.memory_alloc_errors++;
 	return job;
@@ -139,7 +139,7 @@ void
 flashcache_free_pending_job(struct pending_job *job)
 {
 	mempool_free(job, _pending_job_pool);
-	atomic_dec(&nr_pending_jobs);
+	nr_pending_jobs--;
 }
 
 #define FLASHCACHE_PENDING_JOB_HASH(INDEX)		((INDEX) % PENDING_JOB_HASH_SIZE)

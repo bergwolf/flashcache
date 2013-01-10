@@ -68,8 +68,8 @@ mempool_t *_job_pool;
 struct kmem_cache *_pending_job_cache;
 mempool_t *_pending_job_pool;
 
-atomic_t nr_cache_jobs;
-atomic_t nr_pending_jobs;
+unsigned int nr_cache_jobs = 0;
+unsigned int nr_pending_jobs = 0;
 
 extern struct list_head *_pending_jobs;
 extern struct list_head *_io_jobs;
@@ -1320,8 +1320,8 @@ flashcache_dtr(struct dm_target *ti)
 	if (!dmc->sysctl_fast_remove && atomic_read(&dmc->nr_dirty) > 0)
 		DMERR("Could not sync %d blocks to disk, cache still dirty", 
 		      atomic_read(&dmc->nr_dirty));
-	DMINFO("cache jobs %d, pending jobs %d", atomic_read(&nr_cache_jobs), 
-	       atomic_read(&nr_pending_jobs));
+	DMINFO("cache jobs %d, pending jobs %d", nr_cache_jobs,
+	       nr_pending_jobs);
 	for (i = 0 ; i < dmc->size ; i++)
 		nr_queued += dmc->cache[i].nr_queued;
 	DMINFO("cache queued jobs %d", nr_queued);	
@@ -1660,8 +1660,6 @@ flashcache_init(void)
 	r = flashcache_jobs_init();
 	if (r)
 		return r;
-	atomic_set(&nr_cache_jobs, 0);
-	atomic_set(&nr_pending_jobs, 0);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
 	r = dm_io_get(FLASHCACHE_ASYNC_SIZE);
