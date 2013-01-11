@@ -307,11 +307,6 @@ flashcache_io_callback(unsigned long error, void *context)
 				flashcache_md_write(job);
 				return;
 #else
-				/* Only do cache metadata update on a non-DIRTY->DIRTY transition */
-				if ((cacheblk->cache_state & DIRTY) == 0) {
-					flashcache_md_write(job);
-					return;
-				}
 #endif
 			} else { /* cache_mode == WRITE_THROUGH */
 				/* Writs to both disk and cache completed */
