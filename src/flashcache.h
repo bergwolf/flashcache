@@ -321,6 +321,7 @@ struct cache_c {
 
 struct kcached_job {
 	struct list_head list;
+	struct list_head lru;
 	struct cache_c *dmc;
 	struct bio *bio;	/* Original bio */
 	struct job_io_regions {
@@ -635,6 +636,7 @@ int flashcache_status(struct dm_target *ti, status_type_t type,
 
 struct kcached_job *flashcache_alloc_cache_job(void);
 void flashcache_free_cache_job(struct kcached_job *job);
+void flashcache_cache_job_destroy(void);
 struct pending_job *flashcache_alloc_pending_job(struct cache_c *dmc);
 void flashcache_free_pending_job(struct pending_job *job);
 #ifdef FLASHCACHE_DO_CHECKSUMS

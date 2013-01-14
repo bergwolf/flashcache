@@ -1598,6 +1598,7 @@ flashcache_sync_for_remove(struct cache_c *dmc)
 		cancel_delayed_work(&dmc->delayed_clean);
 		flush_scheduled_work();
 	} while (!dmc->sysctl_fast_remove && atomic_read(&dmc->nr_dirty) > 0);
+	flashcache_cache_job_destroy();
 }
 
 static int 

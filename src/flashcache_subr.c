@@ -61,6 +61,7 @@ static DEFINE_SPINLOCK(_pending_job_lock);
 static DEFINE_SPINLOCK(_md_io_job_lock);
 static DEFINE_SPINLOCK(_io_job_lock);
 static DEFINE_SPINLOCK(_uncached_io_comp_job_lock);
+static DEFINE_SPINLOCK(_kj_lock);
 
 extern mempool_t *_job_pool;
 extern mempool_t *_pending_job_pool;
@@ -73,6 +74,11 @@ LIST_HEAD(_io_jobs);
 LIST_HEAD(_md_io_jobs);
 LIST_HEAD(_md_complete_jobs);
 LIST_HEAD(_uncached_io_complete_jobs);
+LIST_HEAD(_kj_free);
+
+static unsigned long long _kj_count;
+
+#define FLASHCACHE_LIVE_KJ_THRESHHOLD (1 << 10)
 
 int
 flashcache_pending_empty(void)
@@ -105,11 +111,67 @@ flashcache_uncached_io_complete_empty(void)
 }
 
 struct kcached_job *
+_flashcache_cache_job_get(void)
+{
+	struct kcached_job *job;
+
+	if (! list_empty(&_kj_free)) {
+		spin_lock_irq(&_kj_lock);
+		if (unlikely(list_empty(&_kj_free))) {
+			spin_unlock_irq(&_kj_lock);
+			goto alloc_kj;
+		}
+		job = list_first_entry(&_kj_free, struct kcached_job, lru);
+		list_del_init(&job->lru);
+		spin_unlock_irq(&_kj_lock);
+		return job;
+	}
+alloc_kj:
+	job = mempool_alloc(_job_pool, GFP_NOIO);
+	if (job) {
+		spin_lock_irq(&_kj_lock);
+		INIT_LIST_HEAD(&job->lru);
+		_kj_count++;
+		spin_unlock_irq(&_kj_lock);
+	}
+	return job;
+}
+
+void
+_flashcache_cache_job_put(struct kcached_job *job)
+{
+	unsigned long flags;
+	bool free = false;
+
+	spin_lock_irqsave(&_kj_lock, flags);
+	if (_kj_count > FLASHCACHE_LIVE_KJ_THRESHHOLD) {
+		free = true;
+		_kj_count--;
+	} else {
+		BUG_ON(! list_empty(&job->lru));
+		list_add(&job->lru, &_kj_free);
+	}
+	spin_unlock_irqrestore(&_kj_lock, flags);
+	if (free) {
+		mempool_free(job, _job_pool);
+		nr_cache_jobs--;
+	}
+}
+
+void
+flashcache_cache_job_destroy()
+{
+	struct kcached_job *job, *tmp;
+	list_for_each_entry_safe(job, tmp, &_kj_free, list)
+		mempool_free(job, _job_pool);
+}
+
+struct kcached_job *
 flashcache_alloc_cache_job(void)
 {
 	struct kcached_job *job;
 
-	job = mempool_alloc(_job_pool, GFP_NOIO);
+	job = _flashcache_cache_job_get();
 	if (likely(job))
 		nr_cache_jobs++;
 	return job;
@@ -118,8 +180,7 @@ flashcache_alloc_cache_job(void)
 void
 flashcache_free_cache_job(struct kcached_job *job)
 {
-	mempool_free(job, _job_pool);
-	nr_cache_jobs--;
+	_flashcache_cache_job_put(job);
 }
 
 struct pending_job *
